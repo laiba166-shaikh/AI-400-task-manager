@@ -1,0 +1,192 @@
+# Modern pytest configuration using pyproject.toml
+# This is the recommended approach for new projects
+
+[tool.pytest.ini_options]
+# Test discovery patterns
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Minimum Python version
+minversion = "3.8"
+
+# Default command line options
+addopts = [
+    "-v",                          # Verbose output
+    "-ra",                         # Show summary of all test outcomes
+    "--strict-markers",            # Fail on unknown markers
+    "--strict-config",             # Fail on unknown config options
+    "--showlocals",                # Show local variables in tracebacks
+    # Coverage options (requires pytest-cov: uv add pytest-cov)
+    "--cov=src",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=80",
+]
+
+# Custom test markers
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "api: marks tests as API tests",
+    "smoke: marks tests as smoke tests",
+    "db: marks tests that require database",
+    "external: marks tests that call external services",
+    "parametrize: marks parametrized tests",
+]
+
+# Output style
+console_output_style = "progress"
+
+# Warning filters
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# Asyncio configuration (requires pytest-asyncio: uv add pytest-asyncio)
+asyncio_mode = "auto"
+
+
+[tool.coverage.run]
+# Coverage source directories
+source = ["src"]
+
+# Files to omit from coverage
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "*/migrations/*",
+    "*/conftest.py",
+]
+
+# Measure branch coverage
+branch = true
+
+# Run tests in parallel (requires coverage[toml])
+parallel = true
+
+
+[tool.coverage.report]
+# Precision of coverage percentages
+precision = 2
+
+# Show missing lines
+show_missing = true
+
+# Skip files with 100% coverage
+skip_covered = false
+
+# Skip empty files
+skip_empty = true
+
+# Fail if any file has coverage below this threshold
+fail_under = 80
+
+# Exclude lines from coverage (regex patterns)
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+
+[tool.coverage.html]
+# HTML coverage report directory
+directory = "htmlcov"
+
+
+# ============================================================================
+# Additional tool configurations
+# ============================================================================
+
+[tool.ruff]
+# Ruff linting configuration (optional)
+# Install: uv add --dev ruff
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+]
+
+[tool.mypy]
+# MyPy type checking configuration (optional)
+# Install: uv add --dev mypy
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+
+[tool.black]
+# Black code formatting configuration (optional)
+# Install: uv add --dev black
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+
+
+# ============================================================================
+# Project dependencies (example)
+# ============================================================================
+
+[project]
+name = "myproject"
+version = "0.1.0"
+description = "My Python project with pytest"
+requires-python = ">=3.8"
+
+dependencies = [
+    # Add your project dependencies here
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-xdist>=3.0.0",        # Parallel test execution
+]
+
+# API testing dependencies
+api = [
+    "httpx>=0.24.0",
+    "fastapi>=0.100.0",
+]
+
+# All development tools
+all = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-xdist>=3.0.0",
+    "httpx>=0.24.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+]
+
+# Installation instructions:
+# uv add --dev pytest pytest-cov pytest-mock pytest-asyncio
+# uv add --dev --optional api httpx fastapi
