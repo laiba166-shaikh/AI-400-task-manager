@@ -9,3 +9,9 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# Claude Code packaged skills
+*.skill
+
+# Claude Code temporary files
+tmpclaude-*

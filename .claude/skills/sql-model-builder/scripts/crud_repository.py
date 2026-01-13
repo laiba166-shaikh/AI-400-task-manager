@@ -1,346 +1,298 @@
-"""
-SQLAlchemy 2.x CRUD Repository Pattern
+"""SQLModel CRUD Repository Pattern
 
-Provides generic repository classes for common database operations
-following the Repository pattern for both sync and async contexts.
+Provides a generic async repository class for common database operations
+following the Repository pattern with SQLModel.
 """
-
-from typing import Generic, TypeVar, Type, List, Optional, Any, Dict
-from sqlalchemy import select, update, delete, func
-from sqlalchemy.orm import Session
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func as sql_func
+
+# Import your model here
+# from app.models import Task
 
 
-# Type variable for model classes
-ModelType = TypeVar("ModelType")
-
-
-# ============================================================================
-# SYNCHRONOUS REPOSITORY
-# ============================================================================
-
-class SyncRepository(Generic[ModelType]):
+class TaskRepository:
     """
-    Generic synchronous repository for CRUD operations.
+    Async repository for Task CRUD operations.
+
+    This is a concrete example. For a generic version, see GenericRepository below.
 
     Usage:
-        user_repo = SyncRepository(User, session)
+        repo = TaskRepository(session)
 
         # Create
-        user = user_repo.create({"name": "John", "email": "john@example.com"})
+        task = await repo.create({"title": "Buy groceries", "completed": False})
 
         # Read
-        user = user_repo.get(1)
-        users = user_repo.get_all(limit=10, offset=0)
+        task = await repo.get(1)
+        tasks = await repo.get_all(skip=0, limit=10)
 
         # Update
-        updated = user_repo.update(1, {"name": "Jane"})
+        updated = await repo.update(1, {"completed": True})
 
         # Delete
-        user_repo.delete(1)
-
-        # Filter
-        active_users = user_repo.filter(is_active=True)
+        deleted = await repo.delete(1)
 
         # Count
-        total = user_repo.count()
+        total = await repo.count()
     """
 
-    def __init__(self, model: Type[ModelType], session: Session):
-        self.model = model
-        self.session = session
-
-    def create(self, data: Dict[str, Any]) -> ModelType:
-        """Create a new record"""
-        instance = self.model(**data)
-        self.session.add(instance)
-        self.session.flush()
-        self.session.refresh(instance)
-        return instance
-
-    def create_many(self, data_list: List[Dict[str, Any]]) -> List[ModelType]:
-        """Create multiple records"""
-        instances = [self.model(**data) for data in data_list]
-        self.session.add_all(instances)
-        self.session.flush()
-        for instance in instances:
-            self.session.refresh(instance)
-        return instances
-
-    def get(self, id: Any) -> Optional[ModelType]:
-        """Get record by primary key"""
-        return self.session.get(self.model, id)
-
-    def get_all(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-        order_by: Optional[str] = None
-    ) -> List[ModelType]:
-        """Get all records with pagination"""
-        stmt = select(self.model).offset(skip).limit(limit)
-
-        if order_by:
-            stmt = stmt.order_by(order_by)
-
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    def filter(self, **filters) -> List[ModelType]:
-        """Filter records by field values"""
-        stmt = select(self.model).filter_by(**filters)
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    def filter_one(self, **filters) -> Optional[ModelType]:
-        """Get single record matching filters"""
-        stmt = select(self.model).filter_by(**filters)
-        result = self.session.execute(stmt)
-        return result.scalars().first()
-
-    def update(self, id: Any, data: Dict[str, Any]) -> Optional[ModelType]:
-        """Update record by primary key"""
-        instance = self.get(id)
-        if not instance:
-            return None
-
-        for key, value in data.items():
-            setattr(instance, key, value)
-
-        self.session.flush()
-        self.session.refresh(instance)
-        return instance
-
-    def update_many(self, filters: Dict[str, Any], data: Dict[str, Any]) -> int:
-        """Update multiple records matching filters"""
-        stmt = update(self.model).where(
-            *[getattr(self.model, k) == v for k, v in filters.items()]
-        ).values(**data)
-
-        result = self.session.execute(stmt)
-        self.session.flush()
-        return result.rowcount
-
-    def delete(self, id: Any) -> bool:
-        """Delete record by primary key"""
-        instance = self.get(id)
-        if not instance:
-            return False
-
-        self.session.delete(instance)
-        self.session.flush()
-        return True
-
-    def delete_many(self, **filters) -> int:
-        """Delete multiple records matching filters"""
-        stmt = delete(self.model).filter_by(**filters)
-        result = self.session.execute(stmt)
-        self.session.flush()
-        return result.rowcount
-
-    def count(self, **filters) -> int:
-        """Count records, optionally filtered"""
-        stmt = select(func.count()).select_from(self.model)
-        if filters:
-            stmt = stmt.filter_by(**filters)
-
-        result = self.session.execute(stmt)
-        return result.scalar_one()
-
-    def exists(self, id: Any) -> bool:
-        """Check if record exists by primary key"""
-        return self.get(id) is not None
-
-
-# ============================================================================
-# ASYNCHRONOUS REPOSITORY
-# ============================================================================
-
-class AsyncRepository(Generic[ModelType]):
-    """
-    Generic asynchronous repository for CRUD operations.
-
-    Usage:
-        user_repo = AsyncRepository(User, session)
-
-        # Create
-        user = await user_repo.create({"name": "John", "email": "john@example.com"})
-
-        # Read
-        user = await user_repo.get(1)
-        users = await user_repo.get_all(limit=10, offset=0)
-
-        # Update
-        updated = await user_repo.update(1, {"name": "Jane"})
-
-        # Delete
-        await user_repo.delete(1)
-
-        # Filter
-        active_users = await user_repo.filter(is_active=True)
-
-        # Count
-        total = await user_repo.count()
-    """
-
-    def __init__(self, model: Type[ModelType], session: AsyncSession):
-        self.model = model
-        self.session = session
-
-    async def create(self, data: Dict[str, Any]) -> ModelType:
-        """Create a new record"""
-        instance = self.model(**data)
-        self.session.add(instance)
-        await self.session.flush()
-        await self.session.refresh(instance)
-        return instance
-
-    async def create_many(self, data_list: List[Dict[str, Any]]) -> List[ModelType]:
-        """Create multiple records"""
-        instances = [self.model(**data) for data in data_list]
-        self.session.add_all(instances)
-        await self.session.flush()
-        for instance in instances:
-            await self.session.refresh(instance)
-        return instances
-
-    async def get(self, id: Any) -> Optional[ModelType]:
-        """Get record by primary key"""
-        return await self.session.get(self.model, id)
-
-    async def get_all(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-        order_by: Optional[str] = None
-    ) -> List[ModelType]:
-        """Get all records with pagination"""
-        stmt = select(self.model).offset(skip).limit(limit)
-
-        if order_by:
-            stmt = stmt.order_by(order_by)
-
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def filter(self, **filters) -> List[ModelType]:
-        """Filter records by field values"""
-        stmt = select(self.model).filter_by(**filters)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def filter_one(self, **filters) -> Optional[ModelType]:
-        """Get single record matching filters"""
-        stmt = select(self.model).filter_by(**filters)
-        result = await self.session.execute(stmt)
-        return result.scalars().first()
-
-    async def update(self, id: Any, data: Dict[str, Any]) -> Optional[ModelType]:
-        """Update record by primary key"""
-        instance = await self.get(id)
-        if not instance:
-            return None
-
-        for key, value in data.items():
-            setattr(instance, key, value)
-
-        await self.session.flush()
-        await self.session.refresh(instance)
-        return instance
-
-    async def update_many(self, filters: Dict[str, Any], data: Dict[str, Any]) -> int:
-        """Update multiple records matching filters"""
-        stmt = update(self.model).where(
-            *[getattr(self.model, k) == v for k, v in filters.items()]
-        ).values(**data)
-
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
-
-    async def delete(self, id: Any) -> bool:
-        """Delete record by primary key"""
-        instance = await self.get(id)
-        if not instance:
-            return False
-
-        await self.session.delete(instance)
-        await self.session.flush()
-        return True
-
-    async def delete_many(self, **filters) -> int:
-        """Delete multiple records matching filters"""
-        stmt = delete(self.model).filter_by(**filters)
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
-
-    async def count(self, **filters) -> int:
-        """Count records, optionally filtered"""
-        stmt = select(func.count()).select_from(self.model)
-        if filters:
-            stmt = stmt.filter_by(**filters)
-
-        result = await self.session.execute(stmt)
-        return result.scalar_one()
-
-    async def exists(self, id: Any) -> bool:
-        """Check if record exists by primary key"""
-        return await self.get(id) is not None
-
-
-# ============================================================================
-# FASTAPI SERVICE LAYER EXAMPLE
-# ============================================================================
-
-"""
-# services/user_service.py
-from sqlalchemy.ext.asyncio import AsyncSession
-from models import User
-from crud_repository import AsyncRepository
-
-class UserService:
     def __init__(self, session: AsyncSession):
-        self.repo = AsyncRepository(User, session)
+        """
+        Initialize repository with database session.
 
-    async def create_user(self, name: str, email: str) -> User:
-        return await self.repo.create({"name": name, "email": email})
+        Args:
+            session: Async database session
+        """
+        self.session = session
 
-    async def get_user(self, user_id: int) -> User | None:
-        return await self.repo.get(user_id)
+    async def create(self, task_data: Dict[str, Any]):  # -> Task:
+        """
+        Create a new task.
 
-    async def get_active_users(self) -> List[User]:
-        return await self.repo.filter(is_active=True)
+        Args:
+            task_data: Dictionary with task fields
 
-    async def deactivate_user(self, user_id: int) -> User | None:
-        return await self.repo.update(user_id, {"is_active": False})
+        Returns:
+            Created Task instance
+        """
+        # from app.models import Task
+        # task = Task(**task_data)
+        # self.session.add(task)
+        # await self.session.flush()
+        # await self.session.refresh(task)
+        # return task
+        pass
+
+    async def get(self, task_id: int):  # -> Optional[Task]:
+        """
+        Get task by ID.
+
+        Args:
+            task_id: Task ID to retrieve
+
+        Returns:
+            Task instance or None if not found
+        """
+        # from app.models import Task
+        # return await self.session.get(Task, task_id)
+        pass
+
+    async def get_all(self, skip: int = 0, limit: int = 100):  # -> List[Task]:
+        """
+        Get all tasks with pagination.
+
+        Args:
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+
+        Returns:
+            List of Task instances
+        """
+        # from app.models import Task
+        # statement = select(Task).offset(skip).limit(limit).order_by(Task.id)
+        # result = await self.session.execute(statement)
+        # return list(result.scalars().all())
+        pass
+
+    async def update(self, task_id: int, data: Dict[str, Any]):  # -> Optional[Task]:
+        """
+        Update task by ID.
+
+        Args:
+            task_id: Task ID to update
+            data: Dictionary with fields to update
+
+        Returns:
+            Updated Task instance or None if not found
+        """
+        # task = await self.get(task_id)
+        # if not task:
+        #     return None
+        #
+        # for key, value in data.items():
+        #     setattr(task, key, value)
+        #
+        # # Update timestamp if model has updated_at field
+        # if hasattr(task, 'updated_at'):
+        #     task.updated_at = datetime.utcnow()
+        #
+        # await self.session.flush()
+        # await self.session.refresh(task)
+        # return task
+        pass
+
+    async def delete(self, task_id: int) -> bool:
+        """
+        Delete task by ID.
+
+        Args:
+            task_id: Task ID to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        # task = await self.get(task_id)
+        # if not task:
+        #     return False
+        #
+        # await self.session.delete(task)
+        # await self.session.flush()
+        # return True
+        pass
+
+    async def count(self) -> int:
+        """
+        Count total number of tasks.
+
+        Returns:
+            Total count of tasks
+        """
+        # from app.models import Task
+        # statement = select(sql_func.count()).select_from(Task)
+        # result = await self.session.execute(statement)
+        # return result.scalar_one()
+        pass
 
 
-# routes/users.py
-from fastapi import APIRouter, Depends, HTTPException
+# ============================================================================
+# WORKING EXAMPLE - Copy and adapt this for your models
+# ============================================================================
+
+"""
+Here's a complete working example based on the Task model:
+
+```python
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from session_factory import get_async_db
-from services.user_service import UserService
+from sqlalchemy import func as sql_func
+from app.models import Task
 
-router = APIRouter(prefix="/users")
 
-@router.post("/")
-async def create_user(
-    name: str,
-    email: str,
-    db: AsyncSession = Depends(get_async_db)
-):
-    service = UserService(db)
-    return await service.create_user(name, email)
+class TaskRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
-@router.get("/{user_id}")
-async def get_user(
-    user_id: int,
-    db: AsyncSession = Depends(get_async_db)
-):
-    service = UserService(db)
-    user = await service.get_user(user_id)
-    if not user:
-        raise HTTPException(404, "User not found")
-    return user
+    async def create(self, task_data: Dict[str, Any]) -> Task:
+        task = Task(**task_data)
+        self.session.add(task)
+        await self.session.flush()
+        await self.session.refresh(task)
+        return task
+
+    async def get(self, task_id: int) -> Optional[Task]:
+        return await self.session.get(Task, task_id)
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> List[Task]:
+        statement = select(Task).offset(skip).limit(limit).order_by(Task.id)
+        result = await self.session.execute(statement)
+        return list(result.scalars().all())
+
+    async def update(self, task_id: int, data: Dict[str, Any]) -> Optional[Task]:
+        task = await self.get(task_id)
+        if not task:
+            return None
+
+        for key, value in data.items():
+            setattr(task, key, value)
+
+        # Update timestamp
+        task.updated_at = datetime.utcnow()
+
+        await self.session.flush()
+        await self.session.refresh(task)
+        return task
+
+    async def delete(self, task_id: int) -> bool:
+        task = await self.get(task_id)
+        if not task:
+            return False
+
+        await self.session.delete(task)
+        await self.session.flush()
+        return True
+
+    async def count(self) -> int:
+        statement = select(sql_func.count()).select_from(Task)
+        result = await self.session.execute(statement)
+        return result.scalar_one()
+```
+"""
+
+
+# ============================================================================
+# KEY PATTERNS
+# ============================================================================
+
+"""
+1. Use sqlmodel.select (not sqlalchemy.select) for queries:
+   ```python
+   from sqlmodel import select
+   statement = select(Task).where(Task.completed == False)
+   ```
+
+2. Use session.execute() for queries, session.get() for by-ID lookups:
+   ```python
+   # By ID
+   task = await session.get(Task, 1)
+
+   # Query
+   result = await session.execute(select(Task))
+   tasks = result.scalars().all()
+   ```
+
+3. Use flush() in repositories, commit() in route handlers:
+   ```python
+   # In repository
+   await session.flush()
+
+   # In route handler
+   await session.commit()
+   ```
+
+4. Handle None returns for not found:
+   ```python
+   task = await repo.get(999)
+   if not task:
+       raise HTTPException(status_code=404, detail="Task not found")
+   ```
+
+5. Update timestamps explicitly:
+   ```python
+   if hasattr(task, 'updated_at'):
+       task.updated_at = datetime.utcnow()
+   ```
+
+6. Use scalars() to get model instances:
+   ```python
+   result = await session.execute(select(Task))
+   tasks = list(result.scalars().all())  # Returns List[Task]
+   ```
+
+7. Filtering with where():
+   ```python
+   # Single condition
+   statement = select(Task).where(Task.completed == True)
+
+   # Multiple conditions
+   statement = select(Task).where(
+       Task.completed == False,
+       Task.priority > 3
+   )
+   ```
+
+8. Ordering and pagination:
+   ```python
+   statement = (
+       select(Task)
+       .where(Task.completed == False)
+       .order_by(Task.created_at.desc())
+       .offset(skip)
+       .limit(limit)
+   )
+   ```
 """

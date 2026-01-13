@@ -1,134 +1,255 @@
-"""
-SQLAlchemy 2.x Base Model Templates
+"""SQLModel base classes and common patterns.
 
-Provides base classes for both sync and async ORM models following
-SQLAlchemy 2.0 declarative patterns with type annotations.
+Copy and adapt these patterns for your models.
 """
-
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import func
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlmodel import SQLModel, Field
 
 
 # ============================================================================
-# BASE CLASSES
+# Base Model Pattern
 # ============================================================================
 
-class Base(DeclarativeBase):
+class TaskBase(SQLModel):
     """
-    Synchronous base class for all ORM models.
+    Base model with shared fields.
 
-    Usage:
-        class User(Base):
-            __tablename__ = "users"
-            id: Mapped[int] = mapped_column(primary_key=True)
-            name: Mapped[str]
+    Use this pattern to define fields that are common across
+    all variants (Create, Read, Update, Table).
+    """
+    title: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Task title",
+        index=True,  # Creates database index
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Task description"
+    )
+    completed: bool = Field(
+        default=False,
+        description="Completion status"
+    )
+
+
+class Task(TaskBase, table=True):
+    """
+    Database table model.
+
+    table=True indicates this is a database table.
+    Inherits all fields from TaskBase.
+    """
+    __tablename__ = "tasks"
+
+    id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="Primary key"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Creation timestamp"
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last update timestamp"
+    )
+
+
+class TaskCreate(TaskBase):
+    """
+    Schema for creating tasks (POST /tasks/).
+
+    Inherits: title, description, completed from TaskBase
+    Excludes: id, created_at, updated_at (auto-generated)
     """
     pass
 
 
-class AsyncBase(AsyncAttrs, DeclarativeBase):
+class TaskRead(TaskBase):
     """
-    Async base class for all ORM models with async attribute loading.
+    Schema for reading tasks (GET responses).
 
-    Usage:
-        class User(AsyncBase):
-            __tablename__ = "users"
-            id: Mapped[int] = mapped_column(primary_key=True)
-            name: Mapped[str]
-            posts: Mapped[List["Post"]] = relationship()
-
-        # Async attribute access
-        async with session.begin():
-            user = await session.get(User, 1)
-            posts = await user.awaitable_attrs.posts
+    Includes all fields including database-generated ones.
     """
-    pass
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+
+class TaskUpdate(SQLModel):
+    """
+    Schema for updating tasks (PATCH /tasks/{id}).
+
+    All fields optional for partial updates.
+    Only fields provided in request will be updated.
+    """
+    title: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=200
+    )
+    description: Optional[str] = None
+    completed: Optional[bool] = None
 
 
 # ============================================================================
-# TIMESTAMPED MIXIN
+# Timestamp Mixin Pattern (Alternative)
 # ============================================================================
 
-class TimestampMixin:
+class TimestampModel(SQLModel):
     """
-    Adds created_at and updated_at timestamp fields.
+    Mixin for models that need timestamps.
 
-    Usage:
-        class User(TimestampMixin, Base):
-            __tablename__ = "users"
-            id: Mapped[int] = mapped_column(primary_key=True)
-            name: Mapped[str]
+    Use this as a base class for models that track creation/update times.
     """
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
         nullable=False
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
-        onupdate=func.now(),
-        nullable=True
-    )
-
-
-# ============================================================================
-# SOFT DELETE MIXIN
-# ============================================================================
-
-class SoftDeleteMixin:
-    """
-    Adds soft delete capability via deleted_at timestamp.
-
-    Usage:
-        class User(SoftDeleteMixin, Base):
-            __tablename__ = "users"
-            id: Mapped[int] = mapped_column(primary_key=True)
-            name: Mapped[str]
-
-        # Soft delete
-        user.deleted_at = datetime.utcnow()
-
-        # Query only active records
-        stmt = select(User).where(User.deleted_at.is_(None))
-    """
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Optional[datetime] = Field(
         default=None,
         nullable=True
     )
 
 
-# ============================================================================
-# EXAMPLE MODEL TEMPLATES
-# ============================================================================
+class UserBase(SQLModel):
+    """Example using TimestampModel"""
+    email: str = Field(unique=True, index=True)
+    name: str
 
-# Example 1: Basic sync model with timestamps
-class UserExample(TimestampMixin, Base):
-    """Example user model with timestamps"""
+
+class User(UserBase, TimestampModel, table=True):
+    """
+    User table with automatic timestamps.
+
+    Inherits from both UserBase (business fields)
+    and TimestampModel (timestamp fields).
+    """
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True, index=True)
-    email: Mapped[str] = mapped_column(unique=True, index=True)
-    full_name: Mapped[Optional[str]]
-    is_active: Mapped[bool] = mapped_column(default=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
 
 
-# Example 2: Async model with relationships
+# ============================================================================
+# Soft Delete Pattern
+# ============================================================================
+
+class SoftDeleteModel(SQLModel):
+    """
+    Mixin for soft-delete functionality.
+
+    Instead of deleting records, mark them as deleted with a timestamp.
+    """
+    deleted_at: Optional[datetime] = Field(default=None)
+
+    @property
+    def is_deleted(self) -> bool:
+        """Check if record is soft-deleted"""
+        return self.deleted_at is not None
+
+    def soft_delete(self) -> None:
+        """Mark record as deleted"""
+        self.deleted_at = datetime.utcnow()
+
+    def restore(self) -> None:
+        """Restore soft-deleted record"""
+        self.deleted_at = None
+
+
+class ProductBase(SQLModel):
+    name: str
+    price: float = Field(ge=0)
+
+
+class Product(ProductBase, SoftDeleteModel, table=True):
+    """
+    Product table with soft-delete support.
+    """
+    __tablename__ = "products"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+
+# ============================================================================
+# Validation Examples
+# ============================================================================
+
+class ValidatedModel(SQLModel, table=True):
+    """Examples of various field validations"""
+    __tablename__ = "validated"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # String validations
+    email: str = Field(regex=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    username: str = Field(min_length=3, max_length=50)
+
+    # Numeric validations
+    age: int = Field(ge=0, le=120)  # 0 <= age <= 120
+    price: float = Field(gt=0)  # price > 0
+    discount: float = Field(ge=0, le=100)  # 0 <= discount <= 100
+
+    # Optional with validation
+    phone: Optional[str] = Field(
+        default=None,
+        regex=r'^\+?1?\d{9,15}$'
+    )
+
+
+# ============================================================================
+# Index Examples
+# ============================================================================
+
+class IndexedModel(SQLModel, table=True):
+    """Examples of various index types"""
+    __tablename__ = "indexed"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Simple index
+    email: str = Field(unique=True, index=True)
+
+    # Non-unique index
+    category: str = Field(index=True)
+
+    # Multiple columns can be indexed
+    # (for composite indexes, use sa_column_kwargs or Index in __table_args__)
+    status: str = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ============================================================================
+# Usage Notes
+# ============================================================================
+
 """
-from typing import List
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
+1. Base Model Pattern:
+   - Define TaskBase with shared fields
+   - Task (table=True) is the database table
+   - TaskCreate for POST requests (no id/timestamps)
+   - TaskRead for GET responses (includes all fields)
+   - TaskUpdate for PATCH requests (all optional)
 
-class PostExample(AsyncBase):
-    __tablename__ = "posts"
+2. Timestamp Pattern:
+   - Create TimestampModel mixin
+   - Inherit from it in your table models
+   - Automatically adds created_at/updated_at
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str]
-    content: Mapped[str]
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+3. Soft Delete Pattern:
+   - Create SoftDeleteModel mixin
+   - Provides deleted_at field and helper methods
+   - Query with .where(Model.deleted_at.is_(None))
 
-    # Async relationship
-    user: Mapped["UserExample"] = relationship(back_populates="posts")
-    comments: Mapped[List["CommentExample"]] = relationship(back_populates="post")
+4. Validation:
+   - Use Field() with validators (min_length, max_length, ge, le, gt, lt)
+   - Use regex for pattern matching
+   - Pydantic validates on model creation
+
+5. Indexes:
+   - index=True for single-column indexes
+   - unique=True for unique constraints
+   - For composite indexes, use __table_args__
 """
